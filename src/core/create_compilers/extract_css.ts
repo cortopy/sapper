@@ -136,6 +136,28 @@ export default function extract_css(
 		css_map.set(css_module.id, css_module.code);
 	});
 
+	const entry = path.resolve(dirs.src, 'client.js');
+	const entry_chunk = client_result.chunks.find(chunk => chunk.modules.indexOf(entry) !== -1);
+
+	const entry_chunk_dependencies: Set<Chunk> = new Set([entry_chunk]);
+	const entry_css_modules: string[] = [];
+
+	// recursively find the chunks this component depends on
+	entry_chunk_dependencies.forEach(chunk => {
+		if (!chunk) return; // TODO why does this happen?
+
+		chunk.imports.forEach(file => {
+			entry_chunk_dependencies.add(lookup.get(file));
+		});
+
+		chunk.modules.forEach(file => {
+			unclaimed.delete(file);
+			if (css_map.has(file)) {
+				entry_css_modules.push(file);
+			}
+		});
+	});
+
 	const chunks_with_css = new Set();
 
 	// concatenate and emit CSS
@@ -161,32 +183,9 @@ export default function extract_css(
 			code += `\n/*# sourceMappingURL=${inline_sourcemap_header}${base64} */`;
 		}
 
-		fs.writeFileSync(`${asset_dir}/${output_file_name}`, code);
-
-		chunks_with_css.add(chunk);
-	});
-
-	const entry = path.resolve(dirs.src, 'client.js');
-	const entry_chunk = client_result.chunks.find(chunk => chunk.modules.indexOf(entry) !== -1);
-
-	const entry_chunk_dependencies: Set<Chunk> = new Set([entry_chunk]);
-	const entry_css_modules: string[] = [];
-
-	// recursively find the chunks this component depends on
-	entry_chunk_dependencies.forEach(chunk => {
-		if (!chunk) return; // TODO why does this happen?
-
-		chunk.imports.forEach(file => {
-			entry_chunk_dependencies.add(lookup.get(file));
-		});
-
-		if (chunks_with_css.has(chunk)) {
-			chunk.modules.forEach(file => {
-				unclaimed.delete(file);
-				if (css_map.has(file)) {
-					entry_css_modules.push(file);
-				}
-			});
+		if (css_modules.every(m => !entry_css_modules.includes(m))) {
+			fs.writeFileSync(`${asset_dir}/${output_file_name}`, code);
+		  chunks_with_css.add(chunk);
 		}
 	});
 
